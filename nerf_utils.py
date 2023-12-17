@@ -34,30 +34,31 @@ def read_in_image(idx=0, split='train'):
 
 def get_rays(cam_2_world, width=800, height=800):
     device = cam_2_world.device
-    
     aspect_ratio = width / height
     focal_length = 3
     image_height = 2
     image_width = aspect_ratio * image_height
 
-    # Creating the grid of points
+    # Calculate the offsets for each pixel
+    offset_x = 1 / (2 * width)
+    offset_y = 1 / (2 * height)
+
+    # Creating the grid of points directly
     i, j = torch.meshgrid(
-        # top_left[0] is x coordinate of top left corner (left bound)
-        # bottom_right[0] is x coordinate of bottom right corner (right bound)
-        torch.linspace(-image_width / 2, image_width / 2, width, device=device) + (1 / (2 * width)),
-        # top_left[1] is y coordinate of top left corner (top bound)
-        # bottom_right[1] is y coordinate of bottom right corner (bottom bound)
-        torch.linspace(image_height / 2, -image_height / 2, height, device=device) + (1 / (2 * height)),
+        torch.linspace(-image_width / 2 + offset_x, image_width / 2 + offset_x, width, device=device),
+        torch.linspace(image_height / 2 + offset_y, -image_height / 2 + offset_y, height, device=device),
         indexing='ij'
     )
     
-    directions = torch.stack([i, j, -torch.ones_like(i, device=device) * focal_length])
-    # normalize the directions
+    # Calculate and normalize direction vectors
+    directions = torch.stack([(i / focal_length), (j / focal_length), -torch.ones_like(i)], dim=0).reshape(3, -1)
     directions /= torch.norm(directions, dim=0, keepdim=True)
-    rays_d = cam_2_world[:3, :3] @ directions.reshape(3, -1)
+    rays_d = cam_2_world[:3, :3] @ directions
     rays_d = rays_d.reshape(3, height, width)
-    rays_o = torch.broadcast_to(cam_2_world[:3, -1], (height, width, 3)).permute(2, 0, 1)
+    rays_o = torch.broadcast_to(cam_2_world[:3, -1].reshape(3, 1, 1), (3, height, width))
+
     return rays_o, rays_d
+
 
 
 def stratified_sampling(device="cuda"):
